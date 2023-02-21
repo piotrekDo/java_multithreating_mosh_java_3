@@ -46,3 +46,38 @@ public static void main(String[] args) {
 }
 ```
 #### Pauzowanie wątku
+Pauzować możemy metodą ``Thread.sleep`` wywołaną wewnątrz odpowiedniego wątku- w metodzie main czy w metodzie implementującej
+run. 
+
+#### Łaączenie wątków
+
+metoda ``wątek.join()`` metoda wywoływana na wątku działającym w innym. Dla przykładu jeżeli wewnątrz metody main utworzymy
+osobny wątek i na tym wątku wywołamy metodę ``join`` w metodzie main, reszta kodu z main zaczeka na ten wątek.
+
+#### Przerywanie wątku
+Aby przerwać wątek należy na nim wywołać metodę ``interrupt``. Jednak jest ona tylko żądaniem zakończenia wątku i nie spowoduje
+natychmiastowego przerwania jego pracy. Można to rozwiązać stosując if sprawdzający czy obecny wątek ``isInterrupted``
+```
+public class DownloadFileTask implements Runnable{
+    @Override
+    public void run() {
+        for (int i = 0; i < Integer.MAX_VALUE; i++) {
+            if (Thread.currentThread().isInterrupted()) break;
+            System.out.println("Downloaded");
+        }
+    }
+}
+
+
+public class Main {
+    public static void main(String[] args) throws InterruptedException {
+        Thread thread = new Thread(new DownloadFileTask());
+        thread.start();
+
+        Thread.sleep(1500);
+        thread.interrupt();
+    }
+}
+```
+Powyżej w metodzie main wywołujemy nowy wątek i dalej metodę ``sleep``, następnie po 1,5s. metoda main wyśle żądanie 
+przerwania wątku. Bez if wątek może się nie przerwać. 
