@@ -1,11 +1,28 @@
 package org.example;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
 public class Main {
     public static void main(String[] args) throws InterruptedException {
-        Thread thread = new Thread(new DownloadFileTask());
-        thread.start();
+        DownloadStatus status = new DownloadStatus();
 
-        Thread.sleep(1500);
-        thread.interrupt();
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            Thread thread = new Thread(new DownloadFileTask(status));
+            thread.start();
+            threads.add(thread);
+        }
+        threads.forEach(thread -> {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        System.out.println(status.getBytes());
     }
+
+
 }

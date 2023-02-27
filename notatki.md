@@ -81,3 +81,116 @@ public class Main {
 ```
 Powyżej w metodzie main wywołujemy nowy wątek i dalej metodę ``sleep``, następnie po 1,5s. metoda main wyśle żądanie 
 przerwania wątku. Bez if wątek może się nie przerwać. 
+
+## Problemy z wieloma wątkami
+Czasami, gdy kilka wątków stara się zmodyfikować dane możemy natrafić na nieoczekiwane zachowanie programu lub błąd.
+
+### Race conditions
+Sytuacja w której dwa lub więcej wątków starają się dostać do tego samego zasobu, w rezultacie możemy utracić część danych.
+Poniżej przykład, gdzie tworzymy 10 wątków, a każdy z nich powinien 10tys. razy zinkrementować obiket status. Niestety
+wynik sięga około 30tys.
+```
+public class DownloadStatus {
+    private int bytes;
+
+    public int getBytes() {
+        return bytes;
+    }
+
+    public void increment(){
+        bytes++;
+    }
+}
+
+public class DownloadFileTask implements Runnable{
+    private DownloadStatus status;
+
+    public DownloadFileTask(DownloadStatus status) {
+        this.status = status;
+    }
+
+    @Override
+    public void run() {
+        for (int i = 0; i < 10_000; i++) {
+            if (Thread.currentThread().isInterrupted()) break;
+            status.increment();
+        }
+    }
+}
+
+public class Main {
+    public static void main(String[] args) throws InterruptedException {
+        DownloadStatus status = new DownloadStatus();
+
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            Thread thread = new Thread(new DownloadFileTask(status));
+            thread.start();
+            threads.add(thread);
+        }
+        threads.forEach(thread -> {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        System.out.println(status.getBytes());
+    }
+}
+```
+
+Powyższej sytuacji można zapobiec nieudostępniając tego samego obiktu dla każdego wątku. Można wykorzystać różne obiekty
+a ich wyniki zsumować po zakończeniu pracy wszystkich wątków.  
+  
+
+Innym rozwiązaniem jest synchronizacja. Wprowadza to wymóg sekwencyjnego wykonania, kolejkując działania wątków. Może to 
+doprowadzić do powstania *deadlock* czyli sytuacji, gdzie dwa wątki będą czekały w nieskończoność aż drugi się wykona.  
+W celu wprowadzenia synchrnizacji stosujemy obiekty Lock, wywoływane wewnątrz zainteresowanej metody. Metodę ``unlock`` należy 
+zapisywać w ramach bloku finally aby uniknąć sytuacji, gdzie obiekt zostanie zablokowany na stałe. 
+```
+public class DownloadStatus {
+    private int bytes;
+    private Lock lock = new ReentrantLock();
+
+    public int getBytes() {
+        return bytes;
+    }
+
+    public void increment(){
+        lock.lock();
+        try{
+            bytes++;
+        }catch (Exception e) {
+            //logic
+        }finally {
+            lock.unlock();
+        }
+    }
+}
+```
+Synchronizację możemy osiągnąc również blokiem ``synchronized``. Blok ten wymaga przekazania *monitor object*. Monitor object
+odpowiada za synchronizację i pilnowanie kolejności. Złą praktyką jest ``this`` co może doprowadzić do problemów jezeli w 
+takiej klasie jest więcej metod oznaczonych jako ``synchronized``. Wówczas gdy jeden wątek korzysta z jednej metody, żaden
+inny nie może skorzystać z drugiej metody. Powinniśmy wykorzystywać osobne obiekty dla Monitor Object.
+```
+public class DownloadStatus {
+    private int bytes;
+    private Object lock = new Object();
+
+    public int getBytes() {
+        return bytes;
+    }
+
+    public void increment(){
+       synchronized(lock) {
+         bytes++;
+       }
+    }
+}
+```
+Można również oznaczyć metodę jako ``synchronized``- ``public synchronized void increment()``, jednak wówczas jako Monitor
+Object zostanie wykorzystane ``this``.
+
+Kolejnym rozwiązaniem są **obiekty atomiczne** jak ``AtomicInteger``. Obiekty te są bezpieczne wielowątkowo, 
+ponieważ operacje na nich wykonowane są atomiczne- wykonywane w całości jako jedna, nie osobno.
