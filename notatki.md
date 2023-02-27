@@ -49,7 +49,7 @@ public static void main(String[] args) {
 Pauzować możemy metodą ``Thread.sleep`` wywołaną wewnątrz odpowiedniego wątku- w metodzie main czy w metodzie implementującej
 run. 
 
-#### Łaączenie wątków
+#### Łączenie wątków
 
 metoda ``wątek.join()`` metoda wywoływana na wątku działającym w innym. Dla przykładu jeżeli wewnątrz metody main utworzymy
 osobny wątek i na tym wątku wywołamy metodę ``join`` w metodzie main, reszta kodu z main zaczeka na ten wątek.
@@ -88,7 +88,7 @@ Czasami, gdy kilka wątków stara się zmodyfikować dane możemy natrafić na n
 ### Race conditions
 Sytuacja w której dwa lub więcej wątków starają się dostać do tego samego zasobu, w rezultacie możemy utracić część danych.
 Poniżej przykład, gdzie tworzymy 10 wątków, a każdy z nich powinien 10tys. razy zinkrementować obiket status. Niestety
-wynik sięga około 30tys.
+wynik sięga około 30tys. zamiast oczekiwanych 100tys.
 ```
 public class DownloadStatus {
     private int bytes;
@@ -140,11 +140,12 @@ public class Main {
 }
 ```
 
-Powyższej sytuacji można zapobiec nieudostępniając tego samego obiktu dla każdego wątku. Można wykorzystać różne obiekty
-a ich wyniki zsumować po zakończeniu pracy wszystkich wątków.  
-  
+#### Strategie zapobiegania *Race Conditions*
 
-Innym rozwiązaniem jest synchronizacja. Wprowadza to wymóg sekwencyjnego wykonania, kolejkując działania wątków. Może to 
+**Confinement** - *uwięzienie*. Powyższej sytuacji można zapobiec nieudostępniając tego samego obiktu dla każdego wątku.
+Można wykorzystać różne obiekty a ich wyniki zsumować po zakończeniu pracy wszystkich wątków.  
+  
+**Synchronization** - Innym rozwiązaniem jest synchronizacja. Wprowadza to wymóg sekwencyjnego wykonania, kolejkując działania wątków. Może to 
 doprowadzić do powstania *deadlock* czyli sytuacji, gdzie dwa wątki będą czekały w nieskończoność aż drugi się wykona.  
 W celu wprowadzenia synchrnizacji stosujemy obiekty Lock, wywoływane wewnątrz zainteresowanej metody. Metodę ``unlock`` należy 
 zapisywać w ramach bloku finally aby uniknąć sytuacji, gdzie obiekt zostanie zablokowany na stałe. 
@@ -192,5 +193,129 @@ public class DownloadStatus {
 Można również oznaczyć metodę jako ``synchronized``- ``public synchronized void increment()``, jednak wówczas jako Monitor
 Object zostanie wykorzystane ``this``.
 
-Kolejnym rozwiązaniem są **obiekty atomiczne** jak ``AtomicInteger``. Obiekty te są bezpieczne wielowątkowo, 
-ponieważ operacje na nich wykonowane są atomiczne- wykonywane w całości jako jedna, nie osobno.
+#### Słowo kluczowe volatile
+Poza *deadlock* istnieje drugi problem rozwiązywany przez słowo kluczowe ``volatile``. Wykorzystanie go zapewnia, że zmiany
+wprowadzone przez jeden wątek będą widoczne przez drugi. Przykładem może być wykorzystanie przez procesor pamięci cache. 
+Oznacza to że wątek z innego rdzenia nie ma możliwości odczytu tych danych. Mamy poniższy przykład z obiektem ``DownloadStatus``
+zawierającym pole ``isDone``, oznaczone słowem ``volatile``.
+
+```
+public class DownloadStatus {
+    private int bytes;
+    private volatile boolean isDone;
+
+    public int getBytes() {
+        return bytes;
+    }
+
+    public void done() {
+        this.isDone = true;
+    }
+
+    public boolean isDone() {
+        return isDone;
+    }
+
+    public synchronized void increment() {
+        bytes++;
+    }
+}
+```
+
+Oraz naszą implementację interfejsu ``Runnable``
+```
+public class DownloadFileTask implements Runnable{
+    private DownloadStatus status;
+
+    public DownloadFileTask(DownloadStatus status) {
+        this.status = status;
+    }
+
+    @Override
+    public void run() {
+        for (int i = 0; i < 1_000_000; i++) {
+            if (Thread.currentThread().isInterrupted()) break;
+            status.increment();
+        }
+        status.done();
+    }
+}
+```
+
+Wywołujemy całość w metodzie main razem z drugim wątkiem sprawdzającym ciągle czy pole ``isDone`` uległo zmianie.
+```
+public class Main {
+    public static void main(String[] args) throws InterruptedException {
+        DownloadStatus status = new DownloadStatus();
+        Thread thread1 = new Thread(new DownloadFileTask(status));
+        Thread thread2 = new Thread(() -> {
+            while (!status.isDone()) {};
+            System.out.println(status.getBytes());
+        });
+
+        thread1.start();
+        thread2.start();
+    }
+}
+```
+
+Bez zastosowania słowa ``volatile`` program się nie zakończy a drugi wątek będzie w nieskończoność odpytywał obiket 
+``DownloadStatus`` ponieważ obydwa rdzenie przechowują to pole *lokalnie* w pamięci cache. **Zastosowanie słowa ``volatile``
+wymusza przechowywanie pola w pamięci ram**.   
+  
+#### wait() oraz notify()
+Powyższy przykład zawiera pewnien haczyk- implementacja drugiego wątku nieustannie sprawdza pole ``isDone`` co będzie 
+ciąle obciążało procesor. Taka metoda będzie wywoływana miliardy razy.
+```
+Thread thread2 = new Thread(() -> {
+    while (!status.isDone()) {};
+    System.out.println(status.getBytes());
+});
+```
+Można wykorzystać metodę ``wait()``, dzięki czemu warunek nie będzie ciągle sprawdzany. Metoda rzuca wyjątek i JVM
+wymaga jej wykonania w ramach bloku ``synchronized``.
+```
+Thread thread2 = new Thread(() -> {
+    while (!status.isDone()) {
+        synchronized (status) {
+            try {
+                status.wait();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    };
+    System.out.println("bytes: " + String.format("%,d", status.getBytes()));
+});
+```
+Teraz, po drugiej stronie- w miejscu gdzie pole ``isDone`` jest zmieniane, należy wywołać metodę ``notify()`` lub ``notifyAll()``
+w przypadku, gdyby zainteresowanych wątków było więcej. Ponownie należy to wykonać w ramach bluku ``synchronized``, w przeciwnym 
+przypadku JVM zaprotestuje wyrzuceniem wyjątku ``RuntimeException``.
+```
+public class DownloadFileTask implements Runnable {
+    private DownloadStatus status;
+
+    public DownloadFileTask(DownloadStatus status) {
+        this.status = status;
+    }
+
+    @Override
+    public void run() {
+        for (int i = 0; i < 1_000_000; i++) {
+            if (Thread.currentThread().isInterrupted()) break;
+            status.increment();
+        }
+        status.done();
+        synchronized (status) {
+            status.notify();
+        }
+    }
+}
+```
+**WAŻNE!**- obydwie metody, ``notify()`` oraz ``wait()`` wymagają w ramach bloku ``synchronized`` tego samego obiektu. 
+W tym przypadku jest to ``DownloadStatus``.
+
+
+Wracając do strategii zapobiegania *Race Conditions* możemy jeszcze skorzystać z  
+**Atomic objects**/  **obiekty atomiczne** jak ``AtomicInteger``. Obiekty te są bezpieczne wielowątkowo,
+ponieważ operacje na nich wykonowane są atomiczne- wykonywane są w całości jako jedna, podobnie jak transakcje SQL.

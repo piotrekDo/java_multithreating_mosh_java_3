@@ -7,22 +7,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class Main {
     public static void main(String[] args) throws InterruptedException {
         DownloadStatus status = new DownloadStatus();
-
-        List<Thread> threads = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
-            Thread thread = new Thread(new DownloadFileTask(status));
-            thread.start();
-            threads.add(thread);
-        }
-        threads.forEach(thread -> {
-            try {
-                thread.join();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+        Thread thread1 = new Thread(new DownloadFileTask(status));
+        Thread thread2 = new Thread(() -> {
+            while (!status.isDone()) {
+                synchronized (status) {
+                    try {
+                        status.wait();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
             }
+            ;
+            System.out.println("bytes: " + String.format("%,d", status.getBytes()));
         });
-        System.out.println(status.getBytes());
+
+        thread1.start();
+        thread2.start();
     }
-
-
 }
