@@ -1,23 +1,17 @@
 package org.example;
 
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
+
 public class DownloadStatus {
-    private int bytes;
-    private volatile boolean isDone;
+    private LongAdder bytes = new LongAdder();
 
     public int getBytes() {
-        return bytes;
+        return bytes.intValue();
     }
 
-    public void done() {
-        this.isDone = true;
-    }
-
-    public synchronized void increment() {
-        bytes++;
-    }
-
-    public boolean isDone() {
-        return isDone;
+    public void increment(){
+        bytes.increment();
     }
 }

@@ -319,3 +319,38 @@ W tym przypadku jest to ``DownloadStatus``.
 Wracając do strategii zapobiegania *Race Conditions* możemy jeszcze skorzystać z  
 **Atomic objects**/  **obiekty atomiczne** jak ``AtomicInteger``. Obiekty te są bezpieczne wielowątkowo,
 ponieważ operacje na nich wykonowane są atomiczne- wykonywane są w całości jako jedna, podobnie jak transakcje SQL.
+Wracając do problemu z *race conditions*, możemy go rozwiązać zastępując pole ``private int bytes;`` na 
+``private AtomicInteger bytes = new AtomicInteger();``
+```
+public class DownloadStatus {
+    private AtomicInteger bytes = new AtomicInteger();
+
+    public int getBytes() {
+        return bytes.get();
+    }
+
+    public void increment(){
+        bytes.getAndIncrement(); // odpowiednik bytes++, metoda incrementAndGet zadziała jak ++bytes
+    }
+}
+```
+Ta mała zmiana pozwala rozwiązać problem. Obiekty ``Atimic`` są wydajnym rozwiązaniem oferującym metody na których możemy
+operować. Są domyślnym rozwiązaniem dla problemu *race conditions*.  
+  
+**LongAdder & DoubleAdder** to inne rozwiązanie, podobne do obiektów ``Atomic``, działają jeszcze wydajniej składając się 
+z tablicy, do której dostęp może mieć więcej wątków a wywołanie metody ```...value``` spowoduje zsumowanie wartości.
+```
+public class DownloadStatus {
+    private LongAdder bytes = new LongAdder();
+
+    public int getBytes() {
+        return bytes.intValue();
+    }
+
+    public void increment(){
+        bytes.increment();
+    }
+}
+```
+
+### Synchronized Collections
