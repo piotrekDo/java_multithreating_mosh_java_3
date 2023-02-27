@@ -353,4 +353,37 @@ public class DownloadStatus {
 }
 ```
 
-### Synchronized Collections
+### Synchronized Collections && Race conditions
+Problem z *race conditions* występi również w przypadku kolekcji. W przykładzie poniżej w wydruku zobaczymy nieoczekiwany
+wynik w postaci wyniku działania tylko jednego bądź drugiego wątku, różna może być kolejność w sytuacji gdy uda się 
+wykonać całość. 
+```
+public class Main {
+    public static void main(String[] args) throws InterruptedException {
+        Collection<Integer> collection = new ArrayList<>();
+
+        Thread thread1 = new Thread(() -> collection.addAll(Arrays.asList(1, 2, 3)));
+        Thread thread2 = new Thread(() -> collection.addAll(Arrays.asList(4, 5, 6)));
+
+        thread1.start();
+        thread2.start();
+        
+        thread1.join();
+        thread2.join();
+
+        System.out.println(collection);
+    }
+}
+```
+możemy skorzystać z metod statycznych dostępnych w ramach klasy ``Collections`` np. ``Collections.synchronizedCollection()``
+metoda oczekuje argumenu w postaci kolekcji, którą chcemy synchronizować.  
+``Collection<Integer> collection = Collections.synchronizedCollection(new ArrayList<>());``  
+zastosowanie synchronizowanej kolekcji rozwiązuje problem z *race condition*, trzeba pamiętać, że różna będzie kolejność
+dodanych elementów w zależności od szybkości wywołania wszystkich wątków.  
+  
+**Concurrent collections** stanowią rozszerzenie kolekcji synchronizowanych, segmentując kolekcję w taki sposób, że kilka 
+wątków jest w stanie działać jednocześnie na tej samej kolekcji, zakładając, że medyfikują różne jej segmenty. Wówczas
+kolejkowane są jedynie wątki ubiegające się o dane w tym samym segmencie. Obiekty te tworzymy w podobny sposób co *zwyczajne* 
+kolekcje, jednak z przedrostkiem *Concurrent*, np.  
+``Map<Integer, String> map = new ConcurrentHashMap<>();``  
+Tak utworzona mapa jest bezpieczna wielowątkowo. 

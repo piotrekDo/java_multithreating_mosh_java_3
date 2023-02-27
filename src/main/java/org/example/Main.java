@@ -1,25 +1,24 @@
 package org.example;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class Main {
     public static void main(String[] args) throws InterruptedException {
-        DownloadStatus status = new DownloadStatus();
+        Collection<Integer> collection = Collections.synchronizedCollection(new ArrayList<>());
 
-        List<Thread> threads = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
-            Thread thread = new Thread(new DownloadFileTask(status));
-            thread.start();
-            threads.add(thread);
-        }
-        threads.forEach(thread -> {
-            try {
-                thread.join();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        System.out.println(status.getBytes());
+        Thread thread1 = new Thread(() -> collection.addAll(Arrays.asList(1, 2, 3)));
+        Thread thread2 = new Thread(() -> collection.addAll(Arrays.asList(4, 5, 6)));
+
+        thread1.start();
+        thread2.start();
+
+        thread1.join();
+        thread2.join();
+
+        System.out.println(collection);
+
+        Map<Integer, String> map = new ConcurrentHashMap<>();
     }
 }
