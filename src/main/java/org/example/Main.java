@@ -1,24 +1,25 @@
 package org.example;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class Main {
-    public static void main(String[] args) throws InterruptedException {
-        Collection<Integer> collection = Collections.synchronizedCollection(new ArrayList<>());
+    public static void main(String[] args) throws InterruptedException, ExecutionException {
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
 
-        Thread thread1 = new Thread(() -> collection.addAll(Arrays.asList(1, 2, 3)));
-        Thread thread2 = new Thread(() -> collection.addAll(Arrays.asList(4, 5, 6)));
+        Future<Integer> future = executorService.submit(() -> {
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            return 1;
+        });
 
-        thread1.start();
-        thread2.start();
-
-        thread1.join();
-        thread2.join();
-
-        System.out.println(collection);
-
-        Map<Integer, String> map = new ConcurrentHashMap<>();
+        Integer integer = future.get();
+        System.out.println(integer);
     }
 }

@@ -387,3 +387,67 @@ kolejkowane są jedynie wątki ubiegające się o dane w tym samym segmencie. Ob
 kolekcje, jednak z przedrostkiem *Concurrent*, np.  
 ``Map<Integer, String> map = new ConcurrentHashMap<>();``  
 Tak utworzona mapa jest bezpieczna wielowątkowo. 
+
+## The Executive Framework
+Dostarcza wygodne narzędzia do pracy z wątkami takie jak 
+- pule wątków,
+- obiekty Executors,
+- interfejsy Collable oraz Future,
+- programowanie asynchroniczne,
+- obiekty Completable Futures
+
+## Thread Pools- pula wątków.
+Zwyczajowo korzystanie z wielu wątków jest kosztowe dla pamięci i wydajności. Dla każdego zadania należy utworzyć osobny
+obiekt wątku co nie jest wydajne. W ramach *Executive Framework* możemy skorzystać z puli wątków a więc wykorzystywać
+ten sam wątek wielokrotnie zamiast niszczyć go i tworzyć kolejny. 
+
+### Executors
+W ramach pakietu ``java.util.concurrent`` otrzymujemy interfejs ``ExecutorService`` oraz kilka jego implementacji 
+pozwalających na zarządzanie wątkami. Są to:
+- ThreadPoolExecutor,
+- ScheduledThreadPoolExecutor,
+- ForkJoinPool,
+- AbstractExecutorService
+
+Tworzenie tych obiektów jest kłopotliwe i ich konstruktory wymagają wielu argumentów. Możemy wykorzystać metody pochodzące
+z klasy ``Executors`` pozwalające wygodnie tworzyć pule wątków. Dla przykładu wywołanie metody 
+``ExecutorService executorService = Executors.newFixedThreadPool(2);`` utworzy nam implementację ``ThreadPoolExecutor``
+z dwoma wątkami w puli. Teraz z pomocą metody ``submit()`` przekazujemy obiekt ``Runnable`` lub ``Callable`` reprezentujący
+zadanie do wykonania w oddzielnym wątku.  
+``executorService.submit(()-> System.out.println(Thread.currentThread().getName()));``  
+uruchomienie ``Executor'a`` pozostawi działanie programu w zawieszeniu oczekując na kolejne zadania, które mogą nadejść
+w przyszłośći. Chcąc zamknąć program po wykonaniu całości zleconych zadań wywołujemy metodę ``shutdown()``, istnieje 
+również metoda ``shutdownNow()`` różniąca się tym, że przerwya wykonywane zadanie, podczas gdy ``shutdown()`` czeka na jego
+wykonanie przed zamknięciem. 
+**Dobrą praktyką jest wykonywanie zadań w ramach ExecutoService w ramach bloku try/catch. ExecutorService implementuje
+interfejs AutoCloseable**  
+
+## Interfejsy Collable oraz Future
+Interfejs ``Collable`` podobnie jak ``Runnable`` pozwala na wykonywanie zadań wielowątkowo, z tą różnicą że w wyniku 
+swojego działania zwraca obiekt generyczny ``Future``.
+```
+Future<Integer> future = executorService.submit(() -> {
+    System.out.println(Thread.currentThread().getName());
+    return 1;
+});
+```
+
+Poniższy przykład prezentuje proste wywołanie obiektu ``Future`` opóźnionego o 3 sekundy. Wywołanie metody ``get`` zamrozi 
+bieżący wątek do czasu wykonania zadania. Metoda ``get`` przyjmuje też argument w postaci ``Timeout``, gdzie możemy określić
+maksymalny czas przewidziany na wykoananie zadania. 
+```
+ExecutorService executorService = Executors.newFixedThreadPool(2);
+
+Future<Integer> future = executorService.submit(() -> {
+    try {
+        Thread.sleep(3000);
+    } catch (InterruptedException e) {
+        e.printStackTrace();
+    }
+    return 1;
+});
+
+Integer integer = future.get();
+```
+Po wywołaniu metody ``get`` otrzymujemy już oczekiwany obiekt, zamiast wrappera ``Future``. Metoda ``get`` poza ``InterruptedException``
+wyrzuca również wyjątek ``ExecutionException`` oznaczający problem powstały w wyniku pozyskiwania obiektu. 
