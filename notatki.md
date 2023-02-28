@@ -451,3 +451,162 @@ Integer integer = future.get();
 ```
 Po wywołaniu metody ``get`` otrzymujemy już oczekiwany obiekt, zamiast wrappera ``Future``. Metoda ``get`` poza ``InterruptedException``
 wyrzuca również wyjątek ``ExecutionException`` oznaczający problem powstały w wyniku pozyskiwania obiektu. 
+
+## Programowanie asynchroniczne- CompletableFuture<T>
+Przykład prezentujący działanie ``ExecutorService`` niesie ze sobą pewien problem- blokujemy aplikację na czas wykonania
+osobnego wątku co mija się z założeniami wielowątkowości. Obiekty te powołujemy z pomocą metod zawartych w klasie 
+``CompletableFuture``, np. ``CompletableFuture.runAsync()`` przyjmuje jako argument implementację interfejsu ``Runnable``
+i wykonuje metodę ``void``. Jako drugi argument możemy przekazać obiekt ``ExecutorService`` z pulą wątków. Jeżeli tego nie 
+zrobimy zostanie wykorzystana tzw. *common pool*. Jest to pula powoływana przez ``CompletableFuture`` w ramach metody 
+``ForkJoinPool.commonPool``. Można ją skonsfigurować, tak by otrzymać oczekiwaną liczbę wyjątków. Domyślna liczba jest
+powiązana z ilością rdzeni procesora.  
+Inną metodą w ramach klasy ``CompletableFuture`` jest ``supplyAsync`` tym razem oczekującej implementacji interfejsu ``supplier``
+i opcjonalnie puli wątków. 
+```
+Supplier<Integer> supplier = () -> 1;
+CompletableFuture<Integer> integerCompletableFuture = CompletableFuture.supplyAsync(supplier);
+```
+Na obiekcie ``CompletableFuture`` możemy wywołać metodę ``get`` jednak blokuje ona działanie programu i nie działa 
+asynchronicznie. Jej wywołanie nie różni się od metody ``get`` z obiektu ``Future``.  
+
+### Wykorzystanie obiektu CompletableFuture w sposób asynchroniczny
+W poniższym przykładzie symulujemy wysyłanie wiadomości e-mail, co zwykle jest czasochłonnym zajęciem i powinno być 
+wykonywane asynchronicznie. Synchroniczne wywołanie metody możemy owrapować wewnątrz ``CompletableFuture``
+```
+public class FakeMailService {
+    void send() {
+        LongTask.simulate(); // symuluje 3 sekundy opóźnienia.
+        System.out.println("Mail was sent.");
+    }
+
+    CompletableFuture<Void> sendAsync() {
+        return CompletableFuture.runAsync(this::send);
+    }
+}
+```
+Konwencją nazewnictwa jest końcówka *Async* sugerująca, że dana metoda jest asynchroniczna właśnie. 
+```
+FakeMailService fakeMailService = new FakeMailService();
+fakeMailService.sendAsync();
+System.out.println("Hello world");
+```
+Dzięki takiemu działaniu najpierw zobaczymy tekst *Hello world* a następnie, po 3 sekundach naszą wiadomość pochodzącą 
+z medoty ``sendAsync``
+**W przypadku aplikacji konsolowych możemy nie doczekać wyświetlnia tekstu, ponieważ aplikacje te wykonują się imperatywnie,
+linia po linii. Chcąc zobaczyć efekt musimy "zawiesić" działanie programu, np. poprzez metodę ``sleep`` albo przez utworzenie
+puli wątków co utrzyma działanie programu.**
+
+### Reagowanie na wykonanie obiektu CompletableFuture
+Na obiekcie CompletableFuture możemy wywołać jedną z metod pochodzących z interfejsu [CompletionStage](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CompletionStage.html)
+pozwalających zareagować na ukończenie zadania. Jedną z takich metod może byc ``thenRun`` przyjmującą jako argument 
+obiekt ``Runnable`` pozwalający wykonać jakiś fragment kodu, lub np. ``thenRunAsync`` pozwalającą wykonać kolejne, 
+asynchroniczne zadanie. Poniżej przykład metody przyjmującej interfejs funkcyjny ``Consumer`` pozwalający skonsumować
+otrzymany obiekt
+```
+CompletableFuture<Integer> future = CompletableFuture.supplyAsync(() -> 1);
+future.thenAccept(result -> System.out.println(result));
+```
+
+### Obsługa wyjątków w pracy z obiektami CompletableFuture
+Czasami nasze zadanie nie może zostać wykonane, wówczas musimy obsłużyć takie zdarzenie stosując metodę ``get``.
+```
+public static void main(String[] args)  {
+    CompletableFuture<Integer> future = CompletableFuture.supplyAsync(() -> {
+        System.out.println("Getting data...");
+        throw new IllegalStateException("Error connecting");
+    });
+
+    try {
+        future.get();
+    } catch (InterruptedException e) {
+        e.printStackTrace();
+    } catch (ExecutionException e) {
+        e.getCause();
+        e.printStackTrace();
+    }
+}
+```
+
+Opcjonalnie można wykorzystać metodę ``exceptionally`` zwracającą kolejny ``CompletableFuture``. Wówczas wywołujemy
+na nim metodę ``get``
+```
+CompletableFuture<Integer> future = CompletableFuture.supplyAsync(() -> {
+    System.out.println("Getting data...");
+    throw new IllegalStateException("Error connecting");
+});
+
+try {
+    Integer integer = future.exceptionally(throwable -> -1).get();
+    System.out.println(integer);
+} catch (InterruptedException e) {
+    e.printStackTrace();
+} catch (ExecutionException e) {
+    e.getCause();
+    e.printStackTrace();
+}
+```
+
+**Metodę ``get`` można wywołać w ramach innej metody asynchronicznej, np ``thenRun``. Wówczas metoda ``get`` nie zmrozi
+działania programu**
+
+### Łączenie kilku asynchronicznych zadań
+Z pomocą metody ``thenCombine`` wywołanej na jednym ``CompletableFuture`` możemy połączyć kilka zadań.
+Metoda ``thenCombine`` przyjmuje dwa argumenty- ``CompletionStage`` reprezntujący drugą wartość oraz interfejs ``BiFunction``
+gdzie wykonamy kalkulację:
+```
+CompletableFuture<Integer> first = CompletableFuture.supplyAsync(() -> 20);
+CompletableFuture<Double> second = CompletableFuture.supplyAsync(() -> 0.9);
+
+first.thenCombine(second, (price, exchangeRate) -> price * exchangeRate);
+```
+
+Wynikiem działania metody będzie kolejny ``CompletableFuture``. Możemy więc wywołać metodę ``.thenAccept(Sytem.out::print)``.  
+W ciekawszych przypadkach jedna z metod pobierających dane mogłaby zwracać ``String``. W takiej sytuacji trzeba go najpierw zmappować.
+```
+CompletableFuture<Integer> first = CompletableFuture.supplyAsync(() -> "20USD")
+        .thenApply(str -> {
+            String priceString = str.replace("USD", "");
+            return Integer.parseInt(priceString);
+        });
+CompletableFuture<Double> second = CompletableFuture.supplyAsync(() -> 0.9);
+
+first.thenCombine(second, (price, exchangeRate) -> price * exchangeRate)
+        .thenAccept(System.out::println);
+```
+  
+  
+Poniżej przykład, gdzie pobieramy dane z trzech źródeł niezależnie. Wykorzystujemy metodę ``CompletableFuture.allOf`` do
+wyczekania na wszystkie rezultaty. Wewnątrz metody ``thenRun`` wywołujemy ``get`` na rezultatach, ale to nie zmrozi całości
+aplikacji. Metoda ``Thread.sleep(5000)`` jest konieczna z uwagi na konsolowe środowisko aplikacji. 
+
+```
+CompletableFuture<String> price = CompletableFuture.supplyAsync(() -> "20USD");
+CompletableFuture<Integer> items = CompletableFuture.supplyAsync(() -> {
+    LongTask.simulate(); // symulacja oczekiwania na dane kilka sekund
+    return 19;
+});
+CompletableFuture<Double> exRate = CompletableFuture.supplyAsync(() -> 0.9);
+
+CompletableFuture.allOf(price, items, exRate)
+        .thenRun(() -> {
+            try {
+                String priceString = price.get();
+                Integer itemsTotal = items.get();
+                Double exchangeRate = exRate.get();
+
+                int pricePerItem = Integer.parseInt(priceString.replace("USD", ""));
+                double result = pricePerItem * itemsTotal * exchangeRate;
+                System.out.println(result);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            } catch (ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+Thread.sleep(5000);
+```
+
+#### Metoda anyOf
+Metoda o działaniu zbliżonym do ``allOf``, przy czym ``anyOf`` wykona się, gdy tylko jedna z wartości się spełni, podczas gdy
+``allOf`` czeka na ukończenie wszyskich zadań. Również zwraca ``CompletableFuture``
