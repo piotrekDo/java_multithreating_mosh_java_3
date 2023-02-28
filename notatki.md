@@ -610,3 +610,11 @@ Thread.sleep(5000);
 #### Metoda anyOf
 Metoda o działaniu zbliżonym do ``allOf``, przy czym ``anyOf`` wykona się, gdy tylko jedna z wartości się spełni, podczas gdy
 ``allOf`` czeka na ukończenie wszyskich zadań. Również zwraca ``CompletableFuture``
+
+#### Obsługa timeout'ów
+W celu przerwania oczekiwania na dane po jakimś czasie można na obiekcie ``Future`` wywołać metodę ``orTimeout``. Przyjmuje ona 
+dwa aurgumenty= int oraz obiekt ``TimeUnit`` oznaczający reprezentację naszego int np w sekundach czy minutach: 
+``items.orTimeout(1, TimeUnit.SECONDS);`` taki zapis doproawdzi do wyjątku ``ExecutionException`` po przekroczeniu limitu
+jednej, ustalonej sekundy. Alternatywą jest metoda ``completeOnTimeout``. Metoda przyjmuje dodatkowy arugment na pierwszym miejscu,
+w postaci obiektu zastępczego w przypadku przekroczenia limitu czasu
+``items.completeOnTimeout(Integer.MIN_VALUE, 2, TimeUnit.SECONDS);``.
